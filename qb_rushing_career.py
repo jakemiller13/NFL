@@ -143,3 +143,6 @@ print('Median games played of top 25% of QBs based on rushing attempts: {}'\
 print('Median games played of bottom 25% of QBs based on rushing attempts: {}'\
       .format(ypa_bot25_median_games))
 '''
+
+# TODO count how many are in each category
+# TODO what is average length of normal QB
