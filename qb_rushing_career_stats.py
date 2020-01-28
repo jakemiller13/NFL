@@ -93,9 +93,9 @@ plt.grid(which = 'major')
 plt.legend(loc = 'best')
 plt.show()
 
-#####################
-# YARDS PER ATTEMPT #
-#####################
+###############################
+# YARDS PER ATTEMPT - ALL QBS #
+###############################
 yards_max = int(max(df['yards_per_attempt']))
 yards_mean = round(df['yards_per_attempt'].mean(), 1)
 yards_median = round(df['yards_per_attempt'].median(), 1)
@@ -149,3 +149,23 @@ print('Mean games played, top 25% of QBs [count: {}] based on yards per '
 print('Mean games played, bottom 25% of QBs [count: {}] based on yards per '
       'attempt: \n---> {} <---'.format(ypa_bot25.shape[0],
                                        ypa_bot25_mean_games))
+
+########################################################################
+# HISTOGRAM OF GAMES PLAYED FOR TOP AND BOTTOM 25% - YARDS PER ATTEMPT #
+########################################################################
+print()
+gp_top25_max = int(ypa_top25['games_played'].max())
+gp_bot25_max = int(ypa_bot25['games_played'].max())
+plt.hist(ypa_top25['games_played'], [i for i in range(0, gp_top25_max, 25)],
+         alpha = 0.75, label = 'Top 25%')
+plt.hist(ypa_bot25['games_played'], [i for i in range(0, gp_bot25_max, 25)],
+         alpha = 0.5, label = 'Bot 25%')
+plt.legend()
+
+##############################################################
+# STANDARD DEVIATIONS OF GAMES PLAYED FOR TOP AND BOTTOM 25% #
+##############################################################
+print('Standard deviation of games played for top 25%: {}'.
+      format(round(np.std(ypa_top25['games_played']), 2)))
+print('Standard deviation of games played for bottom 25%: {}'.
+      format(round(np.std(ypa_bot25['games_played']), 2)))
