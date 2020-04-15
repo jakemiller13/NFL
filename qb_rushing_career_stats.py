@@ -15,10 +15,15 @@ Created on Tue Dec  3 17:23:55 2019
 import math
 import pandas as pd
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.api as sm
+import patsy
+from scipy.stats import f
+from itertools import compress
 
 # Load data from CSV
-print()
 df = pd.read_csv('qb_rushing.csv')
 
 # Organize by player rank
@@ -37,7 +42,7 @@ print('QBs who played >1 year, started 10+ games, since 1966-67 season: {}'\
 
 # Use these 4 categories for analysis - note the NaN values in YPA
 categories = ['games_played', 'games_started', 'rushing_attempts',
-              'yards_per_attempt']
+              'yards_per_attempt', 'total_yards']
 print()
 print(df[categories].describe())
 quantiles = [0.25, 0.5, 0.75]
@@ -161,6 +166,7 @@ plt.hist(ypa_top25['games_played'], [i for i in range(0, gp_top25_max, 25)],
 plt.hist(ypa_bot25['games_played'], [i for i in range(0, gp_bot25_max, 25)],
          alpha = 0.5, label = 'Bot 25%')
 plt.legend()
+plt.show()
 
 ##############################################################
 # STANDARD DEVIATIONS OF GAMES PLAYED FOR TOP AND BOTTOM 25% #
@@ -169,3 +175,207 @@ print('Standard deviation of games played for top 25%: {}'.
       format(round(np.std(ypa_top25['games_played']), 2)))
 print('Standard deviation of games played for bottom 25%: {}'.
       format(round(np.std(ypa_bot25['games_played']), 2)))
+
+##########################
+# PAIRPLOT OF CATEGORIES #
+##########################
+plt.figure(figsize = (8, 8))
+fig = sns.pairplot(df[categories])
+plt.show()
+
+#############################
+# PLOT ATTEMPTS/YARDS/GAMES #
+#############################
+fig, ax = plt.subplots(figsize = (8, 8))
+ax.scatter(df['rushing_attempts'],
+           df['yards_per_attempt'],
+           s = df['games_played'],
+           c = df['games_played'],
+           cmap = mpl.cm.cool,
+           alpha = 0.7)
+ax.grid()
+ax.set_xlabel('Rushing Attempts')
+ax.set_ylabel('Yards Per Attempt')
+ax.set_title('Games played as function of rushing attempts & ' \
+             'yards per attempt')
+plt.show()
+
+def run_analysis(df, drop_point = None):
+    '''
+    Parameters
+    ----------
+    drop_point : int or list-like, optional
+        Point(s) to drop for analysis. The default is None.
+
+    Returns
+    -------
+    Points to potentially drop, if drop_point == None.
+
+    '''
+    #####################################
+    # DROP INFLUENTIAL POINTS IF NEEDED #
+    #####################################
+    if drop_point:
+        df = df.drop(np.array(drop_point) - 1)
+    y, X = patsy.dmatrices('games_played ~ rushing_attempts + total_yards',
+                           df)
+
+    #
+    # LINE
+    #
+
+    model = sm.OLS(y, X)
+    results = model.fit()
+    results.model.data.design_info = X.design_info
+    coefs = np.round(results.params, 3)
+    print()
+    print(results.summary())
+    print('\n---> Model <---')
+    print('y = {} + {} * rushing_attempts + {} * total_yards'.\
+          format(coefs[0], coefs[1], coefs[2]))
+    
+    ###########################
+    # DROP INFLUENTIAL POINTS #
+    ###########################
+    # If dropping points, only run to here and then exit function
+    if drop_point:
+        print('\nPoints dropped: {}'.format(drop_point))
+        print('Coefficients: {}'.format(np.round(results.params, 3)))
+        print('R-squared: {}'.format(round(results.rsquared, 3)))
+        return
+    else:
+        print('Coefficients: {}'.format(np.round(results.params, 3)))
+        print('R-squared: {}\n'.format(round(results.rsquared, 3)))
+    
+    ##############################
+    # ANOVA TABLE / SIGNIFICANCE #
+    ##############################
+    # H0: beta_0 = beta_1 = beta_2
+    # H1: beta_j != 0
+    # Rushing attempts more significant that total yards
+    # Makes sense because more time in league closely associated with
+    # more chances to run
+    aov_table = sm.stats.anova_lm(results, typ = 1)
+    print('\n--- Analysis of Variance table ---\n{}'.format(aov_table))
+    print('\nCalculated F-stat: {}'.
+          format(round(f.ppf(0.025, X.shape[1] - 1, X.shape[0]), 3)))
+    print('Regression F: {}'.format(round(results.fvalue, 2)))
+    print('Regression p: {}'.format(round(results.f_pvalue, 4)))
+    print('---> Regression is significant <---')
+    
+    ########################
+    # CONFIDENCE INTERVALS #
+    ########################
+    conf_int = np.round(results.conf_int(), 3)
+    print()
+    print('---> 95% Confidence Intervals <---')
+    print('Intercept: {} to {}'.format(conf_int[0][0], conf_int[0][1]))
+    print('Rushing Attempts: {} to {}'.format(conf_int[1][0], conf_int[1][1]))
+    print('Total yards: {} to {}'.format(conf_int[2][0], conf_int[2][1]))
+    
+    #############
+    # RESIDUALS #
+    #############
+    # Get residuals and probability for plot
+    residuals = results.resid
+    Prob = [(i - 1/2) / len(y) for i in range(len(y))]
+    
+    # Plot residuals vs. fitted values
+    fig, ax = plt.subplots(figsize = (8, 8))
+    ax.scatter(results.fittedvalues, residuals)
+    ax.axhline(0)
+    ax.set_xlabel('Fitted Values')
+    ax.set_ylabel('Residuals')
+    plt.title('Residuals Versus Predicted Response')
+    plt.show()
+    
+    # Calculate OLS using resid to plot straight line. Get y values from model
+    resid_results = sm.OLS(Prob, sm.add_constant(sorted(residuals))).fit()
+    X_range = np.linspace(min(residuals), max(residuals), len(residuals))
+    
+    # Normality plot
+    fig = plt.figure(figsize = (8, 8))
+    plt.scatter(sorted(residuals), Prob)
+    plt.plot(X_range,
+             resid_results.params[0] + resid_results.params[1] * X_range)
+    plt.xlabel('Residual')
+    plt.ylabel('Probability')
+    plt.title('Normal Probability Plot')
+    plt.show()
+    print('---> Heavy-tailed distribution <---')
+    
+    ############
+    # OUTLIERS #
+    ############
+    pos_out = (np.argmax(residuals), np.amax(residuals))
+    neg_out = (np.argmax(-residuals), -np.amax(-residuals))
+    x_out = (np.argmax(results.fittedvalues), np.amax(results.fittedvalues))
+    # Visually from residual plot, these 3 points are outliers
+    
+    # Influential points
+    infl = results.get_influence()
+    infl_df = infl.summary_frame()
+    print(infl_df.head().to_string())
+    infl_pts = {}
+    
+    # Leverage Points - Hat Diagonal
+    n, p = X.shape[0], X.shape[1] - 1
+    lev_pt = 2 * p / n
+    dhat_pts = list(infl_df[infl_df['hat_diag'] > lev_pt].index)
+    print('\n***| Hat Diagonal |***')
+    print('Leverage calculation (2 * p \ n) = {}'.format(round(lev_pt, 3)))
+    print('Points where hat diagonal exceeds leverage calculation: {}'.
+        format(dhat_pts))
+    
+    # Cook's D
+    cook_pts = list(infl_df[infl_df['cooks_d'] > 1].index)
+    print('\n***| Cook\'s D |***')
+    print('Points where Cook\'s D is > 1: {}'.
+      format(cook_pts))
+    
+    # DFFITS
+    DFFITS_cutoff = 2 * np.sqrt(p / n)
+    DFFITS_pts = list(infl_df[infl_df['dffits'] > DFFITS_cutoff].index)
+    print('\n***| DFFITS |***')
+    print('Points which exceed DFFITS cutoff: {}'.
+          format(DFFITS_pts))
+    
+    # DFBETAS
+    print('\n***| DFBETAS |***')
+    DFBETAS_cutoff = 2 / np.sqrt(n)
+    DFBETAS_pts = []
+    for col in infl_df.columns:
+        if 'dfb' in col:
+            temp_dfbeta = list(infl_df[infl_df[col] > DFBETAS_cutoff].index)
+            DFBETAS_pts.extend(temp_dfbeta)        
+            print('Points which exceed DFBETAS cutoff for {}: {}'.
+                  format(col,
+                         list(temp_dfbeta)))
+    
+    # COVRATIO
+    print('\n***| COVRATIO |***')
+    COVRATIO_cutoff_pos = 1 + 3 * p / n
+    COVRATIO_cutoff_neg = 1 - 3 * p / n
+    gt_cutoff = list(compress(range(len(infl.cov_ratio)),
+                              infl.cov_ratio > COVRATIO_cutoff_pos))
+    lt_cutoff = list(compress(range(len(infl.cov_ratio)),
+                              infl.cov_ratio < COVRATIO_cutoff_neg))
+    COVRATIO_pts = gt_cutoff + lt_cutoff
+    print('Points which are greater than COVRATIO upper bound cutoff: {}'.
+          format(gt_cutoff))
+    print('Points which are less than COVRATIO lower bound cutoff: {}'.
+          format(lt_cutoff))
+    
+    # Most influential points
+    for i in dhat_pts + cook_pts + DFFITS_pts + DFBETAS_pts + COVRATIO_pts:
+        infl_pts[i] = infl_pts.get(i, 0) + 1
+    most_infl = [pt for pt in infl_pts
+                 if infl_pts[pt] == max(infl_pts.values())]
+    print('\n***| MOST INFLUENTIAL POINTS |***') #points in every cutoff
+    print(sorted(most_infl))
+    
+    # Check who these points are
+    return most_infl
+
+drop_pts = run_analysis(drop_point = None)
+run_analysis(drop_pts)
