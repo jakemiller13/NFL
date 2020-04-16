@@ -216,14 +216,13 @@ def run_analysis(df, drop_point = None):
     # DROP INFLUENTIAL POINTS IF NEEDED #
     #####################################
     if drop_point:
-        df = df.drop(np.array(drop_point) - 1)
+        df = df.reset_index().drop(drop_pts).set_index('player_rank')
     y, X = patsy.dmatrices('games_played ~ rushing_attempts + total_yards',
                            df)
 
-    #
-    # LINE
-    #
-
+    ###########################
+    # LINEAR REGRESSION MODEL #
+    ##########################
     model = sm.OLS(y, X)
     results = model.fit()
     results.model.data.design_info = X.design_info
@@ -377,5 +376,5 @@ def run_analysis(df, drop_point = None):
     # Check who these points are
     return most_infl
 
-drop_pts = run_analysis(drop_point = None)
-run_analysis(drop_pts)
+drop_pts = run_analysis(df, drop_point = None)
+run_analysis(df, drop_pts)
