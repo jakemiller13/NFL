@@ -19,9 +19,19 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.api as sm
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 import patsy
 from scipy.stats import f
 from itertools import compress
+
+def title_print(text):
+    '''
+    Used throughout to print section titles
+    '''
+    print()
+    print('#' * (len(text) + 4))
+    print('|', text, '|')
+    print('#' * (len(text) + 4))
 
 # Load data from CSV
 df = pd.read_csv('qb_rushing.csv')
@@ -200,6 +210,10 @@ ax.set_title('Games played as function of rushing attempts & ' \
              'yards per attempt')
 plt.show()
 
+class Analysis:
+    '''
+    Class to run ordinary least squares (OLS) and associ
+    '''
 def run_analysis(df, drop_point = None):
     '''
     Parameters
@@ -229,7 +243,7 @@ def run_analysis(df, drop_point = None):
     coefs = np.round(results.params, 3)
     print()
     print(results.summary())
-    print('\n---> Model <---')
+    title_print('Model')
     print('y = {} + {} * rushing_attempts + {} * total_yards'.\
           format(coefs[0], coefs[1], coefs[2]))
     
@@ -237,14 +251,15 @@ def run_analysis(df, drop_point = None):
     # DROP INFLUENTIAL POINTS #
     ###########################
     # If dropping points, only run to here and then exit function
+    title_print('Significance')
     if drop_point:
-        print('\nPoints dropped: {}'.format(drop_point))
+        print('Points dropped: {}'.format(drop_point))
         print('Coefficients: {}'.format(np.round(results.params, 3)))
         print('R-squared: {}'.format(round(results.rsquared, 3)))
         return
     else:
         print('Coefficients: {}'.format(np.round(results.params, 3)))
-        print('R-squared: {}\n'.format(round(results.rsquared, 3)))
+        print('R-squared: {}'.format(round(results.rsquared, 3)))
     
     ##############################
     # ANOVA TABLE / SIGNIFICANCE #
@@ -255,7 +270,8 @@ def run_analysis(df, drop_point = None):
     # Makes sense because more time in league closely associated with
     # more chances to run
     aov_table = sm.stats.anova_lm(results, typ = 1)
-    print('\n--- Analysis of Variance table ---\n{}'.format(aov_table))
+    title_print('Analysis of Variance table')
+    print(aov_table)
     print('\nCalculated F-stat: {}'.
           format(round(f.ppf(0.025, X.shape[1] - 1, X.shape[0]), 3)))
     print('Regression F: {}'.format(round(results.fvalue, 2)))
@@ -267,11 +283,19 @@ def run_analysis(df, drop_point = None):
     ########################
     conf_int = np.round(results.conf_int(), 3)
     print()
-    print('---> 95% Confidence Intervals <---')
+    title_print('95% Confidence Intervals')
     print('Intercept: {} to {}'.format(conf_int[0][0], conf_int[0][1]))
     print('Rushing Attempts: {} to {}'.format(conf_int[1][0], conf_int[1][1]))
     print('Total yards: {} to {}'.format(conf_int[2][0], conf_int[2][1]))
-    
+
+    #####################
+    # MULTICOLLINEARITY #
+    #####################
+    vif = np.round([variance_inflation_factor(X, i)
+                    for i in range(X.shape[1])], 4)
+    title_print('Multicollinearity')
+    [print('VIF_{}: {}'.format(i, vif[i])) for i, v in enumerate(vif)]
+
     #############
     # RESIDUALS #
     #############
@@ -306,6 +330,7 @@ def run_analysis(df, drop_point = None):
     ############
     # OUTLIERS #
     ############
+    title_print('Outliers / Influence Points')
     pos_out = (np.argmax(residuals), np.amax(residuals))
     neg_out = (np.argmax(-residuals), -np.amax(-residuals))
     x_out = (np.argmax(results.fittedvalues), np.amax(results.fittedvalues))
@@ -315,6 +340,7 @@ def run_analysis(df, drop_point = None):
     infl = results.get_influence()
     infl_df = infl.summary_frame()
     print(infl_df.head().to_string())
+    print('...continued...')
     infl_pts = {}
     
     # Leverage Points - Hat Diagonal
@@ -374,7 +400,7 @@ def run_analysis(df, drop_point = None):
     print(sorted(most_infl))
     
     # Check who these points are
-    return most_infl
+    return X, y, most_infl
 
-drop_pts = run_analysis(df, drop_point = None)
+X, y, drop_pts = run_analysis(df, drop_point = None)
 run_analysis(df, drop_pts)
